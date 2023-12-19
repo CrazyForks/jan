@@ -4,6 +4,7 @@ import {
   ModelExtension,
   abortDownload,
   joinPath,
+  ModelArtifact
 } from '@janhq/core'
 
 import { useSetAtom } from 'jotai'
@@ -20,6 +21,23 @@ export default function useDownloadModel() {
   const addNewDownloadingModel = useSetAtom(addNewDownloadingModelAtom)
 
   const downloadModel = async (model: Model) => {
+    const childrenDownloadProgress: DownloadState[] = []
+    model.source.forEach((source: ModelArtifact) => {
+      childrenDownloadProgress.push({
+        modelId: source.filename,
+        time: {
+          elapsed: 0,
+          remaining: 0,
+        },
+        speed: 0,
+        percent: 0,
+        size: {
+          total: 0,
+          transferred: 0,
+        },
+      })
+    })
+
     // set an initial download state
     setDownloadState({
       modelId: model.id,
@@ -33,6 +51,7 @@ export default function useDownloadModel() {
         total: 0,
         transferred: 0,
       },
+      children: childrenDownloadProgress,
     })
 
     addNewDownloadingModel(model)
