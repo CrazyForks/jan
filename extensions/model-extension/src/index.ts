@@ -110,6 +110,7 @@ export default class JanModelExtension implements ModelExtension {
    * @param {string} modelId - The ID of the model whose download is to be cancelled.
    * @returns {Promise<void>} A promise that resolves when the download has been cancelled.
    */
+  // TODO: Fix for cancel/ delete multiple model binaries
   async cancelModelDownload(modelId: string): Promise<void> {
     const model = await this.getConfiguredModels()
     return abortDownload(
