@@ -1,9 +1,16 @@
 import { app, ipcMain, shell } from 'electron'
 import { join, basename } from 'path'
 import { WindowManager } from './../managers/window'
-import { getResourcePath, userSpacePath } from './../utils/path'
+import { getResourcePath } from './../utils/path'
 import { AppRoute } from '@janhq/core'
-import { ModuleManager, init, log } from '@janhq/core/node'
+import {
+  ModuleManager,
+  getJanDataFolderPath,
+  getJanExtensionsPath,
+  init,
+  log,
+  logServer,
+} from '@janhq/core/node'
 import { startServer, stopServer } from '@janhq/server'
 
 export function handleAppIPCs() {
@@ -13,7 +20,7 @@ export function handleAppIPCs() {
    * @param _event - The IPC event object.
    */
   ipcMain.handle(AppRoute.openAppDirectory, async (_event) => {
-    shell.openPath(userSpacePath)
+    shell.openPath(getJanDataFolderPath())
   })
 
   /**
@@ -70,7 +77,7 @@ export function handleAppIPCs() {
    * @param _event - The IPC event object.
    * @param url - The URL to reload.
    */
-  ipcMain.handle(AppRoute.relaunch, async (_event, url) => {
+  ipcMain.handle(AppRoute.relaunch, async (_event) => {
     ModuleManager.instance.clearImportedModules()
 
     if (app.isPackaged) {
@@ -79,7 +86,7 @@ export function handleAppIPCs() {
     } else {
       for (const modulePath in ModuleManager.instance.requiredModules) {
         delete require.cache[
-          require.resolve(join(userSpacePath, 'extensions', modulePath))
+          require.resolve(join(getJanExtensionsPath(), modulePath))
         ]
       }
       init({
@@ -88,7 +95,7 @@ export function handleAppIPCs() {
           return true
         },
         // Path to install extension to
-        extensionsPath: join(userSpacePath, 'extensions'),
+        extensionsPath: getJanExtensionsPath(),
       })
       WindowManager.instance.currentWindow?.reload()
     }
@@ -97,7 +104,12 @@ export function handleAppIPCs() {
   /**
    * Log message to log file.
    */
-  ipcMain.handle(AppRoute.log, async (_event, message, fileName) =>
-    log(message, fileName)
+  ipcMain.handle(AppRoute.log, async (_event, message) => log(message))
+
+  /**
+   * Log message to log file.
+   */
+  ipcMain.handle(AppRoute.logServer, async (_event, message) =>
+    logServer(message)
   )
 }

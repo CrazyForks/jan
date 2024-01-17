@@ -27,3 +27,7 @@ APIEvents.forEach((method) => {
 contextBridge.exposeInMainWorld('electronAPI', {
   ...interfaces,
 })
+
+contextBridge.exposeInMainWorld('myAPI', {
+  selectFolder: () => ipcRenderer.invoke('dialog:openDirectory'),
+})

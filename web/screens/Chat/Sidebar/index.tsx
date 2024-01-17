@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React from 'react'
 
-import { getUserSpace, openFileExplorer, joinPath } from '@janhq/core'
+import { getJanDataFolderPath, openFileExplorer, joinPath } from '@janhq/core'
 
 import { Input, Textarea } from '@janhq/uikit'
 
@@ -56,7 +56,7 @@ const Sidebar: React.FC = () => {
       return
     }
 
-    const userSpace = await getUserSpace()
+    const userSpace = await getJanDataFolderPath()
     let filePath = undefined
     const assistantId = activeThread.assistants[0]?.assistant_id
     switch (type) {
@@ -89,7 +89,7 @@ const Sidebar: React.FC = () => {
       return
     }
 
-    const userSpace = await getUserSpace()
+    const userSpace = await getJanDataFolderPath()
     let filePath = undefined
     const assistantId = activeThread.assistants[0]?.assistant_id
     switch (type) {

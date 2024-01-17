@@ -3,7 +3,7 @@
 
 import { useContext, useEffect, useState } from 'react'
 
-import { fs } from '@janhq/core'
+import { fs, getResourcePath, joinPath, AppConfiguration } from '@janhq/core'
 import { Switch, Button } from '@janhq/uikit'
 
 import { atom, useAtom } from 'jotai'
@@ -39,6 +39,42 @@ const Advanced = () => {
       title: 'Logs cleared',
       description: 'All logs have been cleared.',
     })
+  }
+
+  const onJanVaultDirectoryClick = async () => {
+    const destination = await window.myAPI.selectFolder()
+    if (destination) {
+      console.log(`NamH vault selected: ${destination}`)
+
+      const fileSettingPath = await joinPath([
+        await getResourcePath(),
+        'settings.json',
+      ])
+      console.log(`NamH settingFilePath ${fileSettingPath}`)
+      // if (!(await fs.existsSync(fileSettingPath))) {
+      //   const defaultSettings: AppConfiguration = {
+      //     data_folder: destination,
+      //   }
+      //   await fs.writeFileSync(fileSettingPath, JSON.stringify(defaultSettings))
+      // }
+
+      // update settings.json
+      const settings = await fs.readFileSync(fileSettingPath, 'utf-8')
+      const appConfiguration: AppConfiguration = JSON.parse(settings)
+      const source = appConfiguration.data_folder
+      appConfiguration.data_folder = destination
+      await startSyncFiles(source, destination)
+      await fs.writeFileSync(fileSettingPath, JSON.stringify(appConfiguration))
+    }
+  }
+
+  const startSyncFiles = async (source: string, dest: string) => {
+    try {
+      await fs.syncFile(source, dest)
+      console.debug(`File sync finished from ${source} to ${dest}`)
+    } catch (e) {
+      console.error(`File sync error: ${e}`)
+    }
   }
 
   return (
@@ -152,6 +188,21 @@ const Advanced = () => {
         </div>
         <Button size="sm" themes="secondary" onClick={clearLogs}>
           Clear
+        </Button>
+      </div>
+      <div className="flex w-full items-start justify-between border-b border-border py-4 first:pt-0 last:border-none">
+        <div className="w-4/5 flex-shrink-0 space-y-1.5">
+          <div className="flex gap-x-2">
+            <h6 className="text-sm font-semibold capitalize">
+              Select Directory
+            </h6>
+          </div>
+          <p className="whitespace-pre-wrap leading-relaxed">
+            Select Jan&apos;s vault directory
+          </p>
+        </div>
+        <Button size="sm" themes="secondary" onClick={onJanVaultDirectoryClick}>
+          Select
         </Button>
       </div>
       <div className="flex w-full items-start justify-between border-b border-border py-4 first:pt-0 last:border-none">

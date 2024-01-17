@@ -1,21 +1,24 @@
 import fastify from "fastify";
 import dotenv from "dotenv";
-import { log, v1Router } from "@janhq/core/node";
-import path from "path";
-
-import os from "os";
+import {
+  getServerLogPath,
+  v1Router,
+  logServer,
+  getJanExtensionsPath,
+} from "@janhq/core/node";
+import { join } from "path";
 
 dotenv.config();
 
 const JAN_API_HOST = process.env.JAN_API_HOST || "127.0.0.1";
 const JAN_API_PORT = Number.parseInt(process.env.JAN_API_PORT || "1337");
-const serverLogPath = path.join(os.homedir(), "jan", "logs", "server.log");
 
 let server: any | undefined = undefined;
 
 export const startServer = async (schemaPath?: string, baseDir?: string) => {
+  const serverLogPath = getServerLogPath();
   try {
-    log(`[API]::Debug: Starting JAN API server...`, "server.log")
+    logServer(`[API]::Debug: Starting JAN API server...`);
     server = fastify({
       logger: {
         level: "info",
@@ -34,7 +37,7 @@ export const startServer = async (schemaPath?: string, baseDir?: string) => {
 
     await server.register(require("@fastify/swagger-ui"), {
       routePrefix: "/",
-      baseDir: baseDir ?? path.join(__dirname, "../..", "./docs/openapi"),
+      baseDir: baseDir ?? join(__dirname, "../..", "./docs/openapi"),
       uiConfig: {
         docExpansion: "full",
         deepLinking: false,
@@ -46,9 +49,7 @@ export const startServer = async (schemaPath?: string, baseDir?: string) => {
     await server.register(
       (childContext: any, _: any, done: any) => {
         childContext.register(require("@fastify/static"), {
-          root:
-            process.env.EXTENSION_ROOT ||
-            path.join(require("os").homedir(), "jan", "extensions"),
+          root: getJanExtensionsPath(),
           wildcard: false,
         });
 
@@ -63,18 +64,20 @@ export const startServer = async (schemaPath?: string, baseDir?: string) => {
         host: JAN_API_HOST,
       })
       .then(() => {
-        log(`[API]::Debug: JAN API listening at: http://${JAN_API_HOST}:${JAN_API_PORT}`);
+        logServer(
+          `[API]::Debug: JAN API listening at: http://${JAN_API_HOST}:${JAN_API_PORT}`
+        );
       });
   } catch (e) {
-    log(`[API]::Error: ${e}`);
+    logServer(`[API]::Error: ${e}`);
   }
 };
 
 export const stopServer = async () => {
   try {
-    log(`[API]::Debug: Server stopped`, "server.log")
+    logServer("[API]::Debug: Server stopped");
     await server.close();
   } catch (e) {
-    log(`[API]::Error: ${e}`);
+    logServer(`[API]::Error: ${e}`);
   }
 };

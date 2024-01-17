@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { dialog, ipcMain, app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { setupMenu } from './utils/menu'
 import { createUserSpace } from './utils/path'
@@ -6,7 +6,7 @@ import { createUserSpace } from './utils/path'
  * Managers
  **/
 import { WindowManager } from './managers/window'
-import { log, ModuleManager } from '@janhq/core/node'
+import { log } from '@janhq/core/node'
 
 /**
  * IPC Handlers
@@ -78,6 +78,17 @@ function createMainWindow() {
     return { action: 'deny' }
   })
 
+  ipcMain.handle('dialog:openDirectory', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+    })
+    if (canceled) {
+      return
+    } else {
+      return filePaths[0]
+    }
+  })
+
   /* Enable dev tools for development */
   if (!app.isPackaged) mainWindow.webContents.openDevTools()
 }
@@ -94,9 +105,8 @@ function handleIPCs() {
 }
 
 /*
-** Suppress Node error messages
-*/
+ ** Suppress Node error messages
+ */
 process.on('uncaughtException', function (err) {
-  // TODO: Write error to log file in #1447
   log(`Error: ${err}`)
 })

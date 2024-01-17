@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { ExtensionType } from '@janhq/core'
-import { MonitoringExtension } from '@janhq/core'
+import { ExtensionType, MonitoringExtension } from '@janhq/core'
 
 import { useSetAtom } from 'jotai'
 
@@ -43,20 +42,21 @@ export default function useGetSystemResources() {
     setCpuUsage(Math.round(currentLoadInfor?.cpu?.usage ?? 0))
   }
 
-  useEffect(() => {
-    getSystemResources()
+  // TODO: temporary disabled
+  // useEffect(() => {
+  //   getSystemResources()
 
-    // Fetch interval - every 0.5s
-    // TODO: Will we really need this?
-    // There is a possibility that this will be removed and replaced by the process event hook?
-    const intervalId = setInterval(() => {
-      getSystemResources()
-    }, 500)
+  //   // Fetch interval - every 0.5s
+  //   // TODO: Will we really need this?
+  //   // There is a possibility that this will be removed and replaced by the process event hook?
+  //   const intervalId = setInterval(() => {
+  //     getSystemResources()
+  //   }, 500)
 
-    // clean up interval
-    return () => clearInterval(intervalId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  //   // clean up interval
+  //   return () => clearInterval(intervalId)
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [])
 
   return {
     totalRamAtom,

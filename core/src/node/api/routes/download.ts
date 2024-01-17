@@ -1,16 +1,16 @@
 import { DownloadRoute } from '../../../api'
 import { join } from 'path'
-import { userSpacePath } from '../../extension/manager'
 import { DownloadManager } from '../../download'
 import { HttpServer } from '../HttpServer'
 import { createWriteStream } from 'fs'
+import { getJanDataFolderPath } from '../../utils'
 
 export const downloadRouter = async (app: HttpServer) => {
   app.post(`/${DownloadRoute.downloadFile}`, async (req, res) => {
     const body = JSON.parse(req.body as any)
     const normalizedArgs = body.map((arg: any) => {
       if (typeof arg === 'string' && arg.includes('file:/')) {
-        return join(userSpacePath, arg.replace('file:/', ''))
+        return join(getJanDataFolderPath(), arg.replace('file:/', ''))
       }
       return arg
     })
@@ -20,7 +20,7 @@ export const downloadRouter = async (app: HttpServer) => {
 
     const request = require('request')
     const progress = require('request-progress')
-    
+
     const rq = request(normalizedArgs[0])
     progress(rq, {})
       .on('progress', function (state: any) {
@@ -41,7 +41,7 @@ export const downloadRouter = async (app: HttpServer) => {
     const body = JSON.parse(req.body as any)
     const normalizedArgs = body.map((arg: any) => {
       if (typeof arg === 'string' && arg.includes('file:/')) {
-        return join(userSpacePath, arg.replace('file:/', ''))
+        return join(getJanDataFolderPath(), arg.replace('file:/', ''))
       }
       return arg
     })

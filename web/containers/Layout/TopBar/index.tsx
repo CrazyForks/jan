@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { getUserSpace, joinPath, openFileExplorer } from '@janhq/core'
+import { joinPath, openFileExplorer, getJanDataFolderPath } from '@janhq/core'
 import { useAtom, useAtomValue } from 'jotai'
 import {
   PenSquareIcon,
@@ -74,7 +74,7 @@ const TopBar = () => {
       return
     }
 
-    const userSpace = await getUserSpace()
+    const userSpace = await getJanDataFolderPath()
     let filePath = undefined
     filePath = await joinPath(['threads', activeThread.id])
 
@@ -91,7 +91,7 @@ const TopBar = () => {
       return
     }
 
-    const userSpace = await getUserSpace()
+    const userSpace = await getJanDataFolderPath()
     let filePath = undefined
     filePath = await joinPath(['threads', activeThread.id, 'thread.json'])
     if (!filePath) return

@@ -5,7 +5,7 @@ const tcpPortUsed = require("tcp-port-used");
 const fetchRetry = require("fetch-retry")(global.fetch);
 const osUtils = require("os-utils");
 const { readFileSync, writeFileSync, existsSync } = require("fs");
-const { log } = require("@janhq/core/node");
+const { log, getJanDataFolderPath } = require("@janhq/core/node");
 
 // The PORT to use for the Nitro subprocess
 const PORT = 3928;
@@ -16,8 +16,7 @@ const NITRO_HTTP_VALIDATE_MODEL_URL = `${NITRO_HTTP_SERVER_URL}/inferences/llama
 const NITRO_HTTP_KILL_URL = `${NITRO_HTTP_SERVER_URL}/processmanager/destroy`;
 const SUPPORTED_MODEL_FORMAT = ".gguf";
 const NVIDIA_INFO_FILE = path.join(
-  require("os").homedir(),
-  "jan",
+  getJanDataFolderPath(),
   "settings",
   "settings.json"
 );
@@ -65,9 +64,8 @@ function stopModel(): Promise<void> {
  */
 async function initModel(wrapper: any): Promise<ModelOperationResponse> {
   currentModelFile = wrapper.modelFullPath;
-  const janRoot = path.join(require("os").homedir(), "jan");
-  if (!currentModelFile.includes(janRoot)) {
-    currentModelFile = path.join(janRoot, currentModelFile);
+  if (!currentModelFile.includes(getJanDataFolderPath())) {
+    currentModelFile = path.join(getJanDataFolderPath(), currentModelFile);
   }
   const files: string[] = fs.readdirSync(currentModelFile);
 

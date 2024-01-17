@@ -12,7 +12,8 @@ export enum AppRoute {
   baseName = 'baseName',
   startServer = 'startServer',
   stopServer = 'stopServer',
-  log = 'log'
+  log = 'log',
+  logServer = 'logServer',
 }
 
 export enum AppEvent {
@@ -55,7 +56,7 @@ export enum FileSystemRoute {
 }
 export enum FileManagerRoute {
   syncFile = 'syncFile',
-  getUserSpace = 'getUserSpace',
+  getJanDataFolderPath = 'getJanDataFolderPath',
   getResourcePath = 'getResourcePath',
   fileStat = 'fileStat',
 }

@@ -4,11 +4,11 @@ import {
   downloadFile,
   abortDownload,
   getResourcePath,
-  getUserSpace,
   InferenceEngine,
   joinPath,
   ModelExtension,
   Model,
+  getJanDataFolderPath,
 } from '@janhq/core'
 
 /**
@@ -49,7 +49,6 @@ export default class JanModelExtension implements ModelExtension {
 
   private async copyModelsToHomeDir() {
     try {
-      
       // Check for migration conditions
       if (
         localStorage.getItem(`${EXTENSION_NAME}-version`) === VERSION &&
@@ -63,8 +62,8 @@ export default class JanModelExtension implements ModelExtension {
       const resourePath = await getResourcePath()
       const srcPath = await joinPath([resourePath, 'models'])
 
-      const userSpace = await getUserSpace()
-      const destPath = await joinPath([userSpace, 'models'])
+      const janDataFolderPath = await getJanDataFolderPath()
+      const destPath = await joinPath([janDataFolderPath, 'models'])
 
       await fs.syncFile(srcPath, destPath)
 
