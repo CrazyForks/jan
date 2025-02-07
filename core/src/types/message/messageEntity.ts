@@ -1,5 +1,7 @@
+import { CodeInterpreterTool } from '../assistant'
 import { ChatCompletionMessage, ChatCompletionRole } from '../inference'
 import { ModelInfo } from '../model'
+import { Thread } from '../thread'
 
 /**
  * The `ThreadMessage` type defines the shape of a thread's message object.
@@ -14,6 +16,10 @@ export type ThreadMessage = {
   thread_id: string
   /** The assistant id of this thread. **/
   assistant_id?: string
+  /**
+   * A list of files attached to the message, and the tools they were added to.
+   */
+  attachments?: Array<Attachment> | null
   /** The role of the author of this message. **/
   role: ChatCompletionRole
   /** The content of this message. **/
@@ -21,11 +27,15 @@ export type ThreadMessage = {
   /** The status of this message. **/
   status: MessageStatus
   /** The timestamp indicating when this message was created. Represented in Unix time. **/
-  created: number
+  created_at: number
   /** The timestamp indicating when this message was updated. Represented in Unix time. **/
-  updated: number
+  completed_at: number
   /** The additional metadata of this message. **/
   metadata?: Record<string, unknown>
+  /** Type of the message */
+  type?: string
+  /** The error code which explain what error type. Used in conjunction with MessageStatus.Error */
+  error_code?: ErrorCode
 }
 
 /**
@@ -35,7 +45,10 @@ export type ThreadMessage = {
 export type MessageRequest = {
   id?: string
 
-  /** The thread id of the message request. **/
+  /**
+   * @deprecated Use thread object instead
+   * The thread id of the message request.
+   */
   threadId: string
 
   /**
@@ -43,11 +56,26 @@ export type MessageRequest = {
    */
   assistantId?: string
 
+  /**
+   * A list of files attached to the message, and the tools they were added to.
+   */
+  attachments: Array<Attachment> | null
+
   /** Messages for constructing a chat completion request **/
   messages?: ChatCompletionMessage[]
 
   /** Settings for constructing a chat completion request **/
   model?: ModelInfo
+
+  /** The thread of this message is belong to. **/
+  // TODO: deprecate threadId field
+  thread?: Thread
+
+  /** Engine name to process */
+  engine?: string
+
+  /** Message type */
+  type?: string
 }
 
 /**
@@ -62,7 +90,19 @@ export enum MessageStatus {
   /** Message loaded with error. **/
   Error = 'error',
   /** Message is cancelled streaming */
-  Stopped = "stopped"
+  Stopped = 'stopped',
+}
+
+export enum ErrorCode {
+  InvalidApiKey = 'invalid_api_key',
+
+  AuthenticationError = 'authentication_error',
+
+  InsufficientQuota = 'insufficient_quota',
+
+  InvalidRequestError = 'invalid_request_error',
+
+  Unknown = 'unknown',
 }
 
 /**
@@ -70,7 +110,7 @@ export enum MessageStatus {
  */
 export enum ContentType {
   Text = 'text',
-  Image = 'image',
+  Image = 'image_url',
 }
 
 /**
@@ -83,10 +123,58 @@ export type ContentValue = {
 }
 
 /**
+ * The `ImageContentValue` type defines the shape of a content value object of image type
+ * @data_transfer_object
+ */
+export type ImageContentValue = {
+  detail?: string
+  url?: string
+}
+
+/**
  * The `ThreadContent` type defines the shape of a message's content object
  * @data_transfer_object
  */
 export type ThreadContent = {
   type: ContentType
-  text: ContentValue
+  text?: ContentValue
+  image_url?: ImageContentValue
+}
+
+export interface Attachment {
+  /**
+   * The ID of the file to attach to the message.
+   */
+  file_id?: string
+
+  /**
+   * The tools to add this file to.
+   */
+  tools?: Array<
+    CodeInterpreterTool | Attachment.AssistantToolsFileSearchTypeOnly
+  >
+}
+
+export namespace Attachment {
+  export interface AssistantToolsFileSearchTypeOnly {
+    /**
+     * The type of tool being defined: `file_search`
+     */
+    type: 'file_search'
+  }
+}
+
+/**
+ * On an incomplete message, details about why the message is incomplete.
+ */
+export interface IncompleteDetails {
+  /**
+   * The reason the message is incomplete.
+   */
+  reason:
+    | 'content_filter'
+    | 'max_tokens'
+    | 'run_cancelled'
+    | 'run_expired'
+    | 'run_failed'
 }

@@ -1,280 +1,247 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 import {
-  ChatCompletionMessage,
   ChatCompletionRole,
-  ContentType,
-  EventName,
-  MessageRequest,
-  MessageStatus,
-  ExtensionType,
+  MessageRequestType,
+  ExtensionTypeEnum,
   Thread,
   ThreadMessage,
-  events,
   Model,
   ConversationalExtension,
+  EngineManager,
+  ToolManager,
+  ThreadAssistantInfo,
+  InferenceEngine,
 } from '@janhq/core'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
+import { extractInferenceParams, extractModelLoadParams } from '@janhq/core'
+import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai'
 
-import { ulid } from 'ulid'
+import { modelDropdownStateAtom } from '@/containers/ModelDropdown'
+import {
+  currentPromptAtom,
+  editPromptAtom,
+  fileUploadAtom,
+} from '@/containers/Providers/Jotai'
 
-import { selectedModelAtom } from '@/containers/DropdownListSidebar'
-import { currentPromptAtom } from '@/containers/Providers/Jotai'
+import { compressImage, getBase64 } from '@/utils/base64'
+import { MessageRequestBuilder } from '@/utils/messageRequestBuilder'
 
-import { toaster } from '@/containers/Toast'
-
-import { toRuntimeParams, toSettingParams } from '@/utils/modelParam'
+import { ThreadMessageBuilder } from '@/utils/threadMessageBuilder'
 
 import { useActiveModel } from './useActiveModel'
 
 import { extensionManager } from '@/extension/ExtensionManager'
+import { activeAssistantAtom } from '@/helpers/atoms/Assistant.atom'
 import {
   addNewMessageAtom,
+  deleteMessageAtom,
   getCurrentChatMessagesAtom,
+  tokenSpeedAtom,
 } from '@/helpers/atoms/ChatMessage.atom'
+import { selectedModelAtom } from '@/helpers/atoms/Model.atom'
 import {
   activeThreadAtom,
   engineParamsUpdateAtom,
   getActiveThreadModelParamsAtom,
-  threadStatesAtom,
+  isGeneratingResponseAtom,
   updateThreadAtom,
-  updateThreadInitSuccessAtom,
   updateThreadWaitingForResponseAtom,
 } from '@/helpers/atoms/Thread.atom'
 
+export const reloadModelAtom = atom(false)
+
 export default function useSendChatMessage() {
   const activeThread = useAtomValue(activeThreadAtom)
+  const activeAssistant = useAtomValue(activeAssistantAtom)
   const addNewMessage = useSetAtom(addNewMessageAtom)
   const updateThread = useSetAtom(updateThreadAtom)
   const updateThreadWaiting = useSetAtom(updateThreadWaitingForResponseAtom)
-  const [currentPrompt, setCurrentPrompt] = useAtom(currentPromptAtom)
+  const setCurrentPrompt = useSetAtom(currentPromptAtom)
+  const deleteMessage = useSetAtom(deleteMessageAtom)
+  const setEditPrompt = useSetAtom(editPromptAtom)
 
   const currentMessages = useAtomValue(getCurrentChatMessagesAtom)
-  const { activeModel } = useActiveModel()
   const selectedModel = useAtomValue(selectedModelAtom)
-  const { startModel } = useActiveModel()
-  const [queuedMessage, setQueuedMessage] = useState(false)
+  const { activeModel, startModel } = useActiveModel()
 
   const modelRef = useRef<Model | undefined>()
-  const threadStates = useAtomValue(threadStatesAtom)
-  const updateThreadInitSuccess = useSetAtom(updateThreadInitSuccessAtom)
   const activeModelParams = useAtomValue(getActiveThreadModelParamsAtom)
-
   const engineParamsUpdate = useAtomValue(engineParamsUpdateAtom)
-  const setEngineParamsUpdate = useSetAtom(engineParamsUpdateAtom)
 
-  const [reloadModel, setReloadModel] = useState(false)
+  const setEngineParamsUpdate = useSetAtom(engineParamsUpdateAtom)
+  const setReloadModel = useSetAtom(reloadModelAtom)
+  const [fileUpload, setFileUpload] = useAtom(fileUploadAtom)
+  const setIsGeneratingResponse = useSetAtom(isGeneratingResponseAtom)
+  const activeThreadRef = useRef<Thread | undefined>()
+  const activeAssistantRef = useRef<ThreadAssistantInfo | undefined>()
+  const setTokenSpeed = useSetAtom(tokenSpeedAtom)
+  const setModelDropdownState = useSetAtom(modelDropdownStateAtom)
+
+  const selectedModelRef = useRef<Model | undefined>()
 
   useEffect(() => {
     modelRef.current = activeModel
   }, [activeModel])
 
-  const resendChatMessage = async (currentMessage: ThreadMessage) => {
-    if (!activeThread) {
-      console.error('No active thread')
+  useEffect(() => {
+    activeThreadRef.current = activeThread
+  }, [activeThread])
+
+  useEffect(() => {
+    selectedModelRef.current = selectedModel
+  }, [selectedModel])
+
+  useEffect(() => {
+    activeAssistantRef.current = activeAssistant
+  }, [activeAssistant])
+
+  const resendChatMessage = async () => {
+    // Delete last response before regenerating
+    const newConvoData = Array.from(currentMessages)
+    let toSendMessage = newConvoData.pop()
+
+    while (toSendMessage && toSendMessage?.role !== ChatCompletionRole.User) {
+      await extensionManager
+        .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+        ?.deleteMessage(toSendMessage.thread_id, toSendMessage.id)
+        .catch(console.error)
+      deleteMessage(toSendMessage.id ?? '')
+      toSendMessage = newConvoData.pop()
+    }
+
+    if (toSendMessage?.content[0]?.text?.value)
+      sendChatMessage(toSendMessage.content[0].text.value, true, newConvoData)
+  }
+
+  const sendChatMessage = async (
+    message: string,
+    isResend: boolean = false,
+    messages?: ThreadMessage[]
+  ) => {
+    if (!message || message.trim().length === 0) return
+
+    if (!activeThreadRef.current || !activeAssistantRef.current) {
+      console.error('No active thread or assistant')
       return
     }
 
-    updateThreadWaiting(activeThread.id, true)
-
-    const messages: ChatCompletionMessage[] = [
-      activeThread.assistants[0]?.instructions,
-    ]
-      .filter((e) => e && e.trim() !== '')
-      .map<ChatCompletionMessage>((instructions) => {
-        const systemMessage: ChatCompletionMessage = {
-          role: ChatCompletionRole.System,
-          content: instructions,
-        }
-        return systemMessage
-      })
-      .concat(
-        currentMessages
-          .filter(
-            (e) =>
-              currentMessage.role === ChatCompletionRole.User ||
-              e.id !== currentMessage.id
-          )
-          .map<ChatCompletionMessage>((msg) => ({
-            role: msg.role,
-            content: msg.content[0]?.text.value ?? '',
-          }))
-      )
-
-    const messageRequest: MessageRequest = {
-      id: ulid(),
-      messages: messages,
-      threadId: activeThread.id,
-      model: activeThread.assistants[0].model ?? selectedModel,
-    }
-
-    const modelId = selectedModel?.id ?? activeThread.assistants[0].model.id
-
-    if (activeModel?.id !== modelId) {
-      setQueuedMessage(true)
-      startModel(modelId)
-      await WaitForModelStarting(modelId)
-      setQueuedMessage(false)
-    }
-    events.emit(EventName.OnMessageSent, messageRequest)
-  }
-
-  // TODO: Refactor @louis
-  const WaitForModelStarting = async (modelId: string) => {
-    return new Promise<void>((resolve) => {
-      setTimeout(async () => {
-        if (modelRef.current?.id !== modelId) {
-          console.debug('waiting for model to start')
-          await WaitForModelStarting(modelId)
-          resolve()
-        } else {
-          resolve()
-        }
-      }, 200)
-    })
-  }
-
-  const sendChatMessage = async () => {
-    if (!currentPrompt || currentPrompt.trim().length === 0) return
-
-    if (!activeThread) {
-      console.error('No active thread')
+    if (selectedModelRef.current?.id === undefined) {
+      setModelDropdownState(true)
       return
     }
 
     if (engineParamsUpdate) setReloadModel(true)
+    setTokenSpeed(undefined)
 
-    const activeThreadState = threadStates[activeThread.id]
-    const runtimeParams = toRuntimeParams(activeModelParams)
-    const settingParams = toSettingParams(activeModelParams)
+    const runtimeParams = extractInferenceParams(activeModelParams)
+    const settingParams = extractModelLoadParams(activeModelParams)
 
-    // if the thread is not initialized, we need to initialize it first
-    if (
-      !activeThreadState.isFinishInit ||
-      activeThread.assistants[0].model.id !== selectedModel?.id
-    ) {
-      if (!selectedModel) {
-        toaster({ title: 'Please select a model' })
-        return
-      }
-      const assistantId = activeThread.assistants[0].assistant_id ?? ''
-      const assistantName = activeThread.assistants[0].assistant_name ?? ''
-      const instructions = activeThread.assistants[0].instructions ?? ''
+    const prompt = message.trim()
 
-      const updatedThread: Thread = {
-        ...activeThread,
-        assistants: [
-          {
-            assistant_id: assistantId,
-            assistant_name: assistantName,
-            instructions: instructions,
-            model: {
-              id: selectedModel.id,
-              settings: settingParams,
-              parameters: runtimeParams,
-              engine: selectedModel.engine,
-            },
-          },
-        ],
-      }
-      updateThreadInitSuccess(activeThread.id)
-      updateThread(updatedThread)
+    updateThreadWaiting(activeThreadRef.current.id, true)
+    setCurrentPrompt('')
+    setEditPrompt('')
 
-      await extensionManager
-        .get<ConversationalExtension>(ExtensionType.Conversational)
-        ?.saveThread(updatedThread)
+    let base64Blob = fileUpload ? await getBase64(fileUpload.file) : undefined
+
+    if (base64Blob && fileUpload?.type === 'image') {
+      // Compress image
+      base64Blob = await compressImage(base64Blob, 512)
     }
 
-    updateThreadWaiting(activeThread.id, true)
+    const modelRequest =
+      selectedModelRef?.current ?? activeAssistantRef.current?.model
 
-    const prompt = currentPrompt.trim()
-    setCurrentPrompt('')
-
-    const messages: ChatCompletionMessage[] = [
-      activeThread.assistants[0]?.instructions,
-    ]
-      .filter((e) => e && e.trim() !== '')
-      .map<ChatCompletionMessage>((instructions) => {
-        const systemMessage: ChatCompletionMessage = {
-          role: ChatCompletionRole.System,
-          content: instructions,
-        }
-        return systemMessage
-      })
-      .concat(
-        currentMessages
-          .map<ChatCompletionMessage>((msg) => ({
-            role: msg.role,
-            content: msg.content[0]?.text.value ?? '',
-          }))
-          .concat([
-            {
-              role: ChatCompletionRole.User,
-              content: prompt,
-            } as ChatCompletionMessage,
-          ])
-      )
-    const msgId = ulid()
-
-    const modelRequest = selectedModel ?? activeThread.assistants[0].model
+    // Fallback support for previous broken threads
+    if (activeAssistantRef.current?.model?.id === '*') {
+      activeAssistantRef.current.model = {
+        id: modelRequest.id,
+        settings: modelRequest.settings,
+        parameters: modelRequest.parameters,
+      }
+    }
     if (runtimeParams.stream == null) {
       runtimeParams.stream = true
     }
-    const messageRequest: MessageRequest = {
-      id: msgId,
-      threadId: activeThread.id,
-      messages,
-      model: {
+
+    // Build Message Request
+    const requestBuilder = new MessageRequestBuilder(
+      MessageRequestType.Thread,
+      {
         ...modelRequest,
         settings: settingParams,
         parameters: runtimeParams,
       },
+      activeThreadRef.current,
+      messages ?? currentMessages
+    ).addSystemMessage(activeAssistantRef.current?.instructions)
+
+    requestBuilder.pushMessage(prompt, base64Blob, fileUpload)
+
+    // Build Thread Message to persist
+    const threadMessageBuilder = new ThreadMessageBuilder(
+      requestBuilder
+    ).pushMessage(prompt, base64Blob, fileUpload)
+
+    const newMessage = threadMessageBuilder.build()
+
+    // Update thread state
+    const updatedThread: Thread = {
+      ...activeThreadRef.current,
+      updated: newMessage.created_at,
+      metadata: {
+        ...activeThreadRef.current.metadata,
+        lastMessage: prompt,
+      },
     }
-    const timestamp = Date.now()
-    const threadMessage: ThreadMessage = {
-      id: msgId,
-      thread_id: activeThread.id,
-      role: ChatCompletionRole.User,
-      status: MessageStatus.Ready,
-      created: timestamp,
-      updated: timestamp,
-      object: 'thread.message',
-      content: [
-        {
-          type: ContentType.Text,
-          text: {
-            value: prompt,
-            annotations: [],
-          },
-        },
-      ],
+    updateThread(updatedThread)
+
+    if (!isResend) {
+      // Add message
+      const createdMessage = await extensionManager
+        .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+        ?.createMessage(newMessage)
+        .catch(() => undefined)
+
+      if (!createdMessage) return
+
+      // Push to states
+      addNewMessage(createdMessage)
     }
 
-    addNewMessage(threadMessage)
+    // Start Model if not started
+    const modelId =
+      selectedModelRef.current?.id ?? activeAssistantRef.current?.model.id
 
-    await extensionManager
-      .get<ConversationalExtension>(ExtensionType.Conversational)
-      ?.addNewMessage(threadMessage)
-
-    const modelId = selectedModel?.id ?? activeThread.assistants[0].model.id
-
-    if (activeModel?.id !== modelId) {
-      setQueuedMessage(true)
-      startModel(modelId)
-      await WaitForModelStarting(modelId)
-      setQueuedMessage(false)
+    if (base64Blob) {
+      setFileUpload(undefined)
     }
 
-    events.emit(EventName.OnMessageSent, messageRequest)
+    if (modelRef.current?.id !== modelId && modelId) {
+      const error = await startModel(modelId).catch((error: Error) => error)
+      if (error) {
+        updateThreadWaiting(activeThreadRef.current.id, false)
+        return
+      }
+    }
+    setIsGeneratingResponse(true)
 
+    // Process message request with Assistants tools
+    const request = await ToolManager.instance().process(
+      requestBuilder.build(),
+      activeAssistantRef?.current.tools ?? []
+    )
+
+    // Request for inference
+    EngineManager.instance().get(InferenceEngine.cortex)?.inference(request)
+
+    // Reset states
     setReloadModel(false)
     setEngineParamsUpdate(false)
   }
 
   return {
-    reloadModel,
     sendChatMessage,
     resendChatMessage,
-    queuedMessage,
   }
 }

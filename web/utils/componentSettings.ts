@@ -1,54 +1,78 @@
-import { Model, ModelRuntimeParams, ModelSettingParams } from '@janhq/core'
+import { Model, SettingComponentProps } from '@janhq/core'
 
-import { presetConfiguration } from '@/screens/Chat/ModelSetting/predefinedComponent'
-
-import { SettingComponentData } from '@/screens/Chat/ModelSetting/settingComponentBuilder'
-
-import { ModelParams } from '@/helpers/atoms/Thread.atom'
+import { presetConfiguration } from './predefinedComponent'
 
 export const getConfigurationsData = (
-  settings: ModelSettingParams | ModelRuntimeParams,
+  settings: object,
   selectedModel?: Model
-) => {
-  const componentData: SettingComponentData[] = []
+): SettingComponentProps[] => {
+  const componentData: SettingComponentProps[] = []
 
   Object.keys(settings).forEach((key: string) => {
     const componentSetting = presetConfiguration[key]
+    const keySetting = settings[key as keyof typeof settings]
 
     if (!componentSetting) {
       return
     }
     if ('slider' === componentSetting.controllerType) {
-      const value = Number(settings[key as keyof ModelParams])
-      if ('value' in componentSetting.controllerData) {
-        componentSetting.controllerData.value = value
-        if ('max' in componentSetting.controllerData) {
+      const value = Number(keySetting)
+      if ('value' in componentSetting.controllerProps) {
+        componentSetting.controllerProps.value = value
+        if ('max' in componentSetting.controllerProps) {
           switch (key) {
             case 'max_tokens':
-              componentSetting.controllerData.max =
-                selectedModel?.parameters.max_tokens || 4096
+              componentSetting.controllerProps.max =
+                selectedModel?.parameters.max_tokens ||
+                componentSetting.controllerProps.max ||
+                4096
               break
             case 'ctx_len':
-              componentSetting.controllerData.max =
-                selectedModel?.settings.ctx_len || 4096
+              componentSetting.controllerProps.max =
+                selectedModel?.settings.ctx_len ||
+                componentSetting.controllerProps.max ||
+                2048
               break
+            case 'ngl':
+              componentSetting.controllerProps.max =
+                selectedModel?.settings.ngl ||
+                componentSetting.controllerProps.max ||
+                100
           }
         }
       }
     } else if ('input' === componentSetting.controllerType) {
-      const value = settings[key as keyof ModelParams] as string
-      const placeholder = settings[key as keyof ModelParams] as string
-      if ('value' in componentSetting.controllerData)
-        componentSetting.controllerData.value = value
-      if ('placeholder' in componentSetting.controllerData)
-        componentSetting.controllerData.placeholder = placeholder
+      const value =
+        typeof keySetting === 'object' && Array.isArray(keySetting)
+          ? // Support array input with text input
+            // TODO: remove this when we support muti-tag input
+            (keySetting as string[])
+              .filter((e) => e.trim() !== '')
+              .join(' ')
+              .concat(
+                // Keep last space to allow user to add new array element
+                (keySetting as string[])[
+                  (keySetting as string[]).length - 1
+                ] === ''
+                  ? ' '
+                  : ''
+              )
+          : (keySetting as string)
+      const placeholder = keySetting as string
+      if ('value' in componentSetting.controllerProps)
+        componentSetting.controllerProps.value = value
+      if ('placeholder' in componentSetting.controllerProps)
+        componentSetting.controllerProps.placeholder = placeholder
     } else if ('checkbox' === componentSetting.controllerType) {
-      const checked = settings[key as keyof ModelParams] as boolean
-
-      if ('checked' in componentSetting.controllerData)
-        componentSetting.controllerData.checked = checked
+      const checked = keySetting as boolean
+      if ('value' in componentSetting.controllerProps)
+        componentSetting.controllerProps.value = checked
+    } else if ('tag' === componentSetting.controllerType) {
+      if ('value' in componentSetting.controllerProps)
+        componentSetting.controllerProps.value = keySetting as string
     }
     componentData.push(componentSetting)
   })
+
   return componentData
 }
