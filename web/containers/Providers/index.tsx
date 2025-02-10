@@ -1,94 +1,44 @@
 'use client'
 
-import { PropsWithChildren, useEffect, useState } from 'react'
+import { PropsWithChildren } from 'react'
 
 import { Toaster } from 'react-hot-toast'
 
-import { TooltipProvider } from '@janhq/uikit'
-
-import { PostHogProvider } from 'posthog-js/react'
-
-import GPUDriverPrompt from '@/containers/GPUDriverPromptModal'
-import EventListenerWrapper from '@/containers/Providers/EventListener'
+import EventListener from '@/containers/Providers/EventListener'
 import JotaiWrapper from '@/containers/Providers/Jotai'
+
 import ThemeWrapper from '@/containers/Providers/Theme'
 
-import FeatureToggleWrapper from '@/context/FeatureToggle'
+import { CoreConfigurator } from './CoreConfigurator'
+import DataLoader from './DataLoader'
 
-import { setupCoreServices } from '@/services/coreService'
-import {
-  isCoreExtensionInstalled,
-  setupBaseExtensions,
-} from '@/services/extensionService'
-
-import { instance } from '@/utils/posthog'
-
+import DeepLinkListener from './DeepLinkListener'
 import KeyListener from './KeyListener'
+import Responsive from './Responsive'
 
-import { extensionManager } from '@/extension'
+import SWRConfigProvider from './SWRConfigProvider'
+import SettingsHandler from './SettingsHandler'
 
-const Providers = (props: PropsWithChildren) => {
-  const { children } = props
-
-  const [setupCore, setSetupCore] = useState(false)
-  const [activated, setActivated] = useState(false)
-
-  async function setupExtensions() {
-    // Register all active extensions
-    await extensionManager.registerActive()
-
-    setTimeout(async () => {
-      if (!isCoreExtensionInstalled()) {
-        setupBaseExtensions()
-        return
-      }
-
-      extensionManager.load()
-      setActivated(true)
-    }, 500)
-  }
-
-  // Services Setup
-  useEffect(() => {
-    setupCoreServices()
-    setSetupCore(true)
-    return () => {
-      extensionManager.unload()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (setupCore) {
-      // Electron
-      if (window && window.core?.api) {
-        setupExtensions()
-      } else {
-        // Host
-        setActivated(true)
-      }
-    }
-  }, [setupCore])
-
+const Providers = ({ children }: PropsWithChildren) => {
   return (
-    <PostHogProvider client={instance}>
-      <JotaiWrapper>
-        <ThemeWrapper>
-          {setupCore && activated && (
-            <KeyListener>
-              <FeatureToggleWrapper>
-                <EventListenerWrapper>
-                  <TooltipProvider delayDuration={0}>
-                    {children}
-                  </TooltipProvider>
-                  {!isMac && <GPUDriverPrompt />}
-                </EventListenerWrapper>
-                <Toaster position="top-right" />
-              </FeatureToggleWrapper>
-            </KeyListener>
-          )}
-        </ThemeWrapper>
-      </JotaiWrapper>
-    </PostHogProvider>
+    <SWRConfigProvider>
+      <ThemeWrapper>
+        <JotaiWrapper>
+          <CoreConfigurator>
+            <>
+              <Responsive />
+              <KeyListener />
+              <EventListener />
+              <DataLoader />
+              <SettingsHandler />
+              <DeepLinkListener />
+              <Toaster />
+              {children}
+            </>
+          </CoreConfigurator>
+        </JotaiWrapper>
+      </ThemeWrapper>
+    </SWRConfigProvider>
   )
 }
 

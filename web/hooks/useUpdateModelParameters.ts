@@ -1,80 +1,111 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useCallback } from 'react'
+
 import {
   ConversationalExtension,
-  ExtensionType,
+  ExtensionTypeEnum,
+  InferenceEngine,
   Thread,
   ThreadAssistantInfo,
+  extractInferenceParams,
+  extractModelLoadParams,
 } from '@janhq/core'
 
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 
-import { toRuntimeParams, toSettingParams } from '@/utils/modelParam'
+import { useDebouncedCallback } from 'use-debounce'
 
 import { extensionManager } from '@/extension'
+import { activeAssistantAtom } from '@/helpers/atoms/Assistant.atom'
+import { selectedModelAtom } from '@/helpers/atoms/Model.atom'
 import {
-  ModelParams,
-  activeThreadStateAtom,
   getActiveThreadModelParamsAtom,
   setThreadModelParamsAtom,
-  threadsAtom,
 } from '@/helpers/atoms/Thread.atom'
+import { ModelParams } from '@/types/model'
+
+export type UpdateModelParameter = {
+  params?: ModelParams
+  modelId?: string
+  modelPath?: string
+  engine?: InferenceEngine
+}
 
 export default function useUpdateModelParameters() {
-  const threads = useAtomValue(threadsAtom)
-  const setThreadModelParams = useSetAtom(setThreadModelParamsAtom)
-  const activeThreadState = useAtomValue(activeThreadStateAtom)
   const activeModelParams = useAtomValue(getActiveThreadModelParamsAtom)
+  const [activeAssistant, setActiveAssistant] = useAtom(activeAssistantAtom)
+  const [selectedModel] = useAtom(selectedModelAtom)
+  const setThreadModelParams = useSetAtom(setThreadModelParamsAtom)
 
-  const updateModelParameter = async (
+  const updateAssistantExtension = (
     threadId: string,
-    name: string,
-    value: number | boolean | string
+    assistant: ThreadAssistantInfo
   ) => {
-    const thread = threads.find((thread) => thread.id === threadId)
-    if (!thread) {
-      console.error(`Thread ${threadId} not found`)
-      return
-    }
+    return extensionManager
+      .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+      ?.modifyThreadAssistant(threadId, assistant)
+  }
 
-    if (!activeThreadState) {
-      console.error('No active thread')
-      return
-    }
-    const updatedModelParams: ModelParams = {
-      ...activeModelParams,
-      // Explicitly set the value to an array if the name is 'stop'
-      // This is because the inference engine would only accept an array for the 'stop' parameter
-      [name]: name === 'stop' ? (value === '' ? [] : [value]) : value,
-    }
+  const updateAssistantCallback = useDebouncedCallback(
+    updateAssistantExtension,
+    300
+  )
 
-    // update the state
-    setThreadModelParams(thread.id, updatedModelParams)
+  const updateModelParameter = useCallback(
+    async (thread: Thread, settings: UpdateModelParameter) => {
+      if (!activeAssistant) return
 
-    if (!activeThreadState.isFinishInit) {
-      // if thread is not initialized, we don't need to update thread.json
-      return
-    }
+      const toUpdateSettings = processStopWords(settings.params ?? {})
+      const updatedModelParams = settings.modelId
+        ? toUpdateSettings
+        : {
+            ...selectedModel?.parameters,
+            ...selectedModel?.settings,
+            ...activeModelParams,
+            ...toUpdateSettings,
+          }
 
-    const assistants = thread.assistants.map(
-      (assistant: ThreadAssistantInfo) => {
-        const runtimeParams = toRuntimeParams(updatedModelParams)
-        const settingParams = toSettingParams(updatedModelParams)
-
-        assistant.model.parameters = runtimeParams
-        assistant.model.settings = settingParams
-        return assistant
+      // update the state
+      setThreadModelParams(thread.id, updatedModelParams)
+      const runtimeParams = extractInferenceParams(updatedModelParams)
+      const settingParams = extractModelLoadParams(updatedModelParams)
+      const assistantInfo = {
+        ...activeAssistant,
+        model: {
+          ...activeAssistant?.model,
+          parameters: runtimeParams,
+          settings: settingParams,
+          id: settings.modelId ?? selectedModel?.id ?? activeAssistant.model.id,
+          engine:
+            settings.engine ??
+            selectedModel?.engine ??
+            activeAssistant.model.engine,
+        },
       }
-    )
+      setActiveAssistant(assistantInfo)
 
-    // update thread
-    const updatedThread: Thread = {
-      ...thread,
-      assistants,
+      updateAssistantCallback(thread.id, assistantInfo)
+    },
+    [
+      activeAssistant,
+      selectedModel?.parameters,
+      selectedModel?.settings,
+      selectedModel?.id,
+      selectedModel?.engine,
+      activeModelParams,
+      setThreadModelParams,
+      setActiveAssistant,
+      updateAssistantCallback,
+    ]
+  )
+
+  const processStopWords = (params: ModelParams): ModelParams => {
+    if ('stop' in params && typeof params['stop'] === 'string') {
+      // Input as string but stop words accept an array of strings (space as separator)
+      params['stop'] = (params['stop'] as string)
+        .split(' ')
+        .filter((e) => e.trim().length)
     }
-
-    await extensionManager
-      .get<ConversationalExtension>(ExtensionType.Conversational)
-      ?.saveThread(updatedThread)
+    return params
   }
 
   return { updateModelParameter }

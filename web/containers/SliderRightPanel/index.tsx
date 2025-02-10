@@ -1,150 +1,132 @@
-import React, { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import {
-  Slider,
-  Input,
-  Tooltip,
-  TooltipArrow,
-  TooltipContent,
-  TooltipPortal,
-  TooltipTrigger,
-} from '@janhq/uikit'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { Slider, Input, Tooltip } from '@janhq/joi'
 
+import { useClickOutside } from '@janhq/joi'
 import { InfoIcon } from 'lucide-react'
 
-import { useActiveModel } from '@/hooks/useActiveModel'
-import { useClickOutside } from '@/hooks/useClickOutside'
-
-import useUpdateModelParameters from '@/hooks/useUpdateModelParameters'
-
-import { getConfigurationsData } from '@/utils/componentSettings'
-import { toSettingParams } from '@/utils/modelParam'
-
-import { serverEnabledAtom } from '@/helpers/atoms/LocalServer.atom'
-import {
-  engineParamsUpdateAtom,
-  getActiveThreadIdAtom,
-  getActiveThreadModelParamsAtom,
-} from '@/helpers/atoms/Thread.atom'
-
 type Props = {
-  name: string
+  name?: string
   title: string
+  disabled: boolean
   description: string
   min: number
   max: number
   step: number
   value: number
+  onValueChanged: (e: string | number | boolean) => void
 }
 
-const SliderRightPanel: React.FC<Props> = ({
-  name,
+const SliderRightPanel = ({
   title,
+  disabled,
   min,
   max,
   step,
   description,
   value,
-}) => {
-  const { updateModelParameter } = useUpdateModelParameters()
-  const threadId = useAtomValue(getActiveThreadIdAtom)
-
-  const serverEnabled = useAtomValue(serverEnabledAtom)
-
-  const activeModelParams = useAtomValue(getActiveThreadModelParamsAtom)
-
-  const modelSettingParams = toSettingParams(activeModelParams)
-
-  const engineParams = getConfigurationsData(modelSettingParams)
-
-  const setEngineParamsUpdate = useSetAtom(engineParamsUpdateAtom)
-
-  const { stopModel } = useActiveModel()
-
+  onValueChanged,
+}: Props) => {
   const [showTooltip, setShowTooltip] = useState({ max: false, min: false })
+  const [val, setVal] = useState(value.toString())
 
   useClickOutside(() => setShowTooltip({ max: false, min: false }), null, [])
 
-  const onValueChanged = (e: number[]) => {
-    if (!threadId) return
-    if (engineParams.some((x) => x.name.includes(name))) {
-      setEngineParamsUpdate(true)
-      stopModel()
-    } else {
-      setEngineParamsUpdate(false)
-    }
-    updateModelParameter(threadId, name, e[0])
-  }
+  useEffect(() => {
+    setVal(value.toString())
+  }, [value])
 
   return (
     <div className="flex flex-col">
       <div className="mb-3 flex items-center gap-x-2">
-        <p className="text-sm font-semibold text-zinc-500 dark:text-gray-300">
-          {title}
-        </p>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <InfoIcon size={16} className="flex-shrink-0 dark:text-gray-500" />
-          </TooltipTrigger>
-          <TooltipPortal>
-            <TooltipContent side="top" className="max-w-[240px]">
-              <span>{description}</span>
-              <TooltipArrow />
-            </TooltipContent>
-          </TooltipPortal>
-        </Tooltip>
+        <p className="font-medium">{title}</p>
+        <Tooltip
+          trigger={
+            <InfoIcon
+              size={16}
+              className="flex-shrink-0 text-[hsl(var(--text-secondary))]"
+            />
+          }
+          content={description}
+        />
       </div>
       <div className="flex items-center gap-x-4">
         <div className="relative w-full">
           <Slider
             value={[value]}
-            onValueChange={onValueChanged}
+            onValueChange={(e) => {
+              onValueChanged?.(Number(e[0]))
+              setVal(e[0].toString())
+            }}
             min={min}
             max={max}
             step={step}
-            disabled={serverEnabled}
+            disabled={disabled}
           />
-          <div className="relative mt-2 flex items-center justify-between text-gray-400">
-            <p className="text-sm">{min}</p>
-            <p className="text-sm">{max}</p>
+          <div className="relative mt-1 flex items-center justify-between text-[hsla(var(--text-secondary))]">
+            <p className="text-xs">{min}</p>
+            <p className="text-xs">{max}</p>
           </div>
         </div>
-        <Tooltip open={showTooltip.max || showTooltip.min}>
-          <TooltipTrigger asChild>
+        <Tooltip
+          open={showTooltip.max || showTooltip.min}
+          trigger={
             <Input
-              type="number"
-              className="-mt-4 h-8 w-20"
+              type="text"
+              className="-mt-4 h-8 w-[60px]"
               min={min}
               max={max}
-              value={String(value)}
-              disabled={serverEnabled}
+              value={val}
+              disabled={disabled}
+              textAlign="right"
               onBlur={(e) => {
                 if (Number(e.target.value) > Number(max)) {
-                  onValueChanged([Number(max)])
+                  onValueChanged?.(Number(max))
+                  setVal(max.toString())
                   setShowTooltip({ max: true, min: false })
-                } else if (Number(e.target.value) < Number(min)) {
-                  onValueChanged([Number(min)])
+                } else if (
+                  Number(e.target.value) < Number(min) ||
+                  !e.target.value.length
+                ) {
+                  onValueChanged?.(Number(min))
+                  setVal(min.toString())
                   setShowTooltip({ max: false, min: true })
+                } else {
+                  setVal(Number(e.target.value).toString()) // There is a case .5 but not 0.5
                 }
               }}
               onChange={(e) => {
-                onValueChanged([Number(e.target.value)])
+                // TODO: How to support negative number input?
+                // Passthru since it validates again onBlur
+                if (/^\d*\.?\d*$/.test(e.target.value)) {
+                  setVal(e.target.value)
+                }
+
+                // Should not accept invalid value or NaN
+                // E.g. anything changes that trigger onValueChanged
+                // Which is incorrect
+                if (
+                  Number(e.target.value) > Number(max) ||
+                  Number(e.target.value) < Number(min) ||
+                  Number.isNaN(Number(e.target.value))
+                ) {
+                  return
+                }
+                onValueChanged?.(Number(e.target.value))
               }}
             />
-          </TooltipTrigger>
-          <TooltipPortal>
-            <TooltipContent className="max-w-[240px]" side="top">
+          }
+          content={
+            <>
               {showTooltip.max && (
                 <span>Automatically set to the maximum allowed tokens</span>
               )}
               {showTooltip.min && (
                 <span>Automatically set to the minimum allowed tokens</span>
               )}
-              <TooltipArrow />
-            </TooltipContent>
-          </TooltipPortal>
-        </Tooltip>
+            </>
+          }
+        />
       </div>
     </div>
   )

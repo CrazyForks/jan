@@ -1,49 +1,61 @@
-import {
-  EventName,
-  ExtensionType,
-  Thread,
-  events,
-  ConversationalExtension,
-} from '@janhq/core'
+import { ExtensionTypeEnum, Thread, ConversationalExtension } from '@janhq/core'
 
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 
 import { extensionManager } from '@/extension'
-import { setConvoMessagesAtom } from '@/helpers/atoms/ChatMessage.atom'
+import { activeAssistantAtom } from '@/helpers/atoms/Assistant.atom'
 import {
-  ModelParams,
+  setConvoMessagesAtom,
+  subscribedGeneratingMessageAtom,
+} from '@/helpers/atoms/ChatMessage.atom'
+import {
   getActiveThreadIdAtom,
   setActiveThreadIdAtom,
   setThreadModelParamsAtom,
 } from '@/helpers/atoms/Thread.atom'
+import { ModelParams } from '@/types/model'
 
 export default function useSetActiveThread() {
-  const activeThreadId = useAtomValue(getActiveThreadIdAtom)
   const setActiveThreadId = useSetAtom(setActiveThreadIdAtom)
-  const setThreadMessage = useSetAtom(setConvoMessagesAtom)
+  const activeThreadId = useAtomValue(getActiveThreadIdAtom)
+  const setThreadMessages = useSetAtom(setConvoMessagesAtom)
   const setThreadModelParams = useSetAtom(setThreadModelParamsAtom)
+  const setActiveAssistant = useSetAtom(activeAssistantAtom)
+  const [messageSubscriber, setMessageSubscriber] = useAtom(
+    subscribedGeneratingMessageAtom
+  )
 
   const setActiveThread = async (thread: Thread) => {
-    if (activeThreadId === thread.id) {
-      console.debug('Thread already active')
-      return
-    }
-
-    events.emit(EventName.OnInferenceStopped, thread.id)
-
-    // load the corresponding messages
-    const messages = await extensionManager
-      .get<ConversationalExtension>(ExtensionType.Conversational)
-      ?.getAllMessages(thread.id)
-    setThreadMessage(thread.id, messages ?? [])
+    if (!thread?.id || activeThreadId === thread.id) return
 
     setActiveThreadId(thread.id)
-    const modelParams: ModelParams = {
-      ...thread.assistants[0]?.model?.parameters,
-      ...thread.assistants[0]?.model?.settings,
+
+    try {
+      const assistantInfo = await getThreadAssistant(thread.id)
+      setActiveAssistant(assistantInfo)
+      // Load local messages only if there are no messages in the state
+      const messages = await getLocalThreadMessage(thread.id).catch(() => [])
+      const modelParams: ModelParams = {
+        ...assistantInfo?.model?.parameters,
+        ...assistantInfo?.model?.settings,
+      }
+      setThreadModelParams(thread?.id, modelParams)
+      setThreadMessages(thread.id, messages)
+      if (messageSubscriber.thread_id !== thread.id) setMessageSubscriber({})
+    } catch (e) {
+      console.error(e)
     }
-    setThreadModelParams(thread.id, modelParams)
   }
 
-  return { activeThreadId, setActiveThread }
+  return { setActiveThread }
 }
+
+const getLocalThreadMessage = async (threadId: string) =>
+  extensionManager
+    .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+    ?.listMessages(threadId) ?? []
+
+const getThreadAssistant = async (threadId: string) =>
+  extensionManager
+    .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
+    ?.getThreadAssistant(threadId)
