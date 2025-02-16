@@ -1,152 +1,45 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useEffect } from 'react'
 
-import { useEffect, useState } from 'react'
+import { useSetAtom } from 'jotai'
 
-import { ScrollArea } from '@janhq/uikit'
-import { motion as m } from 'framer-motion'
+import CenterPanelContainer from '@/containers/CenterPanelContainer'
 
-import { twMerge } from 'tailwind-merge'
+import SettingDetail from '@/screens/Settings/SettingDetail'
+import SettingLeftPanel from '@/screens/Settings/SettingLeftPanel'
 
-import Advanced from '@/screens/Settings/Advanced'
-import AppearanceOptions from '@/screens/Settings/Appearance'
-import ExtensionCatalog from '@/screens/Settings/CoreExtensions/ExtensionsCatalog'
-import PreferenceExtensions from '@/screens/Settings/CoreExtensions/PreferenceExtensions'
+import { SUCCESS_SET_NEW_DESTINATION } from './Advanced/DataFolder'
 
-import Models from '@/screens/Settings/Models'
+import { selectedSettingAtom } from '@/helpers/atoms/Setting.atom'
 
-import { formatExtensionsName } from '@/utils/converter'
+export const SettingScreenList = [
+  'My Models',
+  'Preferences',
+  'Keyboard Shortcuts',
+  'Privacy',
+  'Advanced Settings',
+  'Engines',
+  'Extensions',
+] as const
+
+export type SettingScreenTuple = typeof SettingScreenList
+export type SettingScreen = SettingScreenTuple[number]
 
 const SettingsScreen = () => {
-  const [activeStaticMenu, setActiveStaticMenu] = useState('My Models')
-  const [menus, setMenus] = useState<any[]>([])
-  const [preferenceItems, setPreferenceItems] = useState<any[]>([])
-  const [preferenceValues, setPreferenceValues] = useState<any[]>([])
+  const setSelectedSettingScreen = useSetAtom(selectedSettingAtom)
 
   useEffect(() => {
-    const menu = ['My Models', 'My Settings', 'Advanced Settings']
-
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      menu.push('Extensions')
+    if (localStorage.getItem(SUCCESS_SET_NEW_DESTINATION) === 'true') {
+      setSelectedSettingScreen('Advanced Settings')
+      localStorage.removeItem(SUCCESS_SET_NEW_DESTINATION)
     }
-    setMenus(menu)
-  }, [])
-
-  const preferenceExtensions = preferenceItems
-    .map((x) => x.extensionnName)
-    .filter((x, i) => {
-      //     return prefere/nceItems.map((x) => x.extensionName).indexOf(x) === i
-    })
-
-  const [activePreferenceExtension, setActivePreferenceExtension] = useState('')
-
-  const handleShowOptions = (menu: string) => {
-    switch (menu) {
-      case 'Extensions':
-        return <ExtensionCatalog />
-
-      case 'My Settings':
-        return <AppearanceOptions />
-
-      case 'Advanced Settings':
-        return <Advanced />
-
-      case 'My Models':
-        return <Models />
-
-      default:
-        return (
-          <PreferenceExtensions
-            extensionName={menu}
-            preferenceItems={preferenceItems}
-            preferenceValues={preferenceValues}
-          />
-        )
-    }
-  }
+  }, [setSelectedSettingScreen])
 
   return (
-    <div className="flex h-full bg-background">
-      <div className="flex h-full w-64 flex-shrink-0 flex-col overflow-y-auto border-r border-border">
-        <ScrollArea className="h-full w-full">
-          <div className="px-6 py-4">
-            <div className="flex-shrink-0">
-              <div className="font-medium">
-                {menus.map((menu, i) => {
-                  const isActive = activeStaticMenu === menu
-                  return (
-                    <div key={i} className="relative my-0.5 block py-1.5">
-                      <div
-                        onClick={() => {
-                          setActiveStaticMenu(menu)
-                          setActivePreferenceExtension('')
-                        }}
-                        className="block w-full cursor-pointer"
-                      >
-                        <span className={twMerge(isActive && 'relative z-10')}>
-                          {menu}
-                        </span>
-                      </div>
-                      {isActive && (
-                        <m.div
-                          className="absolute inset-0 -left-3 h-full w-[calc(100%+24px)] rounded-md bg-primary/50"
-                          layoutId="active-static-menu"
-                        />
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="mt-5 flex-shrink-0">
-              {preferenceExtensions.length > 0 && (
-                <label className="font-bold uppercase text-muted-foreground">
-                  Core Extensions
-                </label>
-              )}
-              <div className="mt-2 font-medium">
-                {preferenceExtensions.map((menu, i) => {
-                  const isActive = activePreferenceExtension === menu
-                  return (
-                    <div key={i} className="relative my-0.5 block py-1.5">
-                      <div
-                        onClick={() => {
-                          setActivePreferenceExtension(menu)
-                          setActiveStaticMenu('')
-                        }}
-                        className="block w-full cursor-pointer"
-                      >
-                        <span
-                          className={twMerge(
-                            'capitalize',
-                            isActive && 'relative z-10'
-                          )}
-                        >
-                          {formatExtensionsName(String(menu))}
-                        </span>
-                      </div>
-                      {isActive ? (
-                        <m.div
-                          className="absolute inset-0 -left-3 h-full w-[calc(100%+24px)] rounded-md bg-primary/50"
-                          layoutId="active-static-menu"
-                        />
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </ScrollArea>
-      </div>
-
-      <div className="h-full w-full bg-background">
-        <ScrollArea className="h-full w-full">
-          <div className="p-4">
-            {handleShowOptions(activeStaticMenu || activePreferenceExtension)}
-          </div>
-        </ScrollArea>
-      </div>
+    <div data-testid="testid-setting-description" className="flex h-full">
+      <SettingLeftPanel />
+      <CenterPanelContainer>
+        <SettingDetail />
+      </CenterPanelContainer>
     </div>
   )
 }
